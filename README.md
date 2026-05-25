@@ -1,7 +1,7 @@
 # fws — feature workspaces
 
 `fws` is a small CLI that helps working on multiple things at once without
-stepping on your own toes. It defines a standardized way of creating git worktree, git branches, and keeps its internal state - 
+stepping on your own toes. It defines a standardized way of creating git worktrees and git branches, and tracks them internally -
 making it easy to keep track of every thing you are working on.
 
 If you have [cmux](https://github.com/get-cmux/cmux), each workspace
