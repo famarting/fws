@@ -25,17 +25,23 @@ type Sidecar struct {
 	CreatedAt       time.Time `json:"created_at"`
 }
 
-var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,49}$`)
+var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9/-]{0,49}$`)
 
 func ValidateName(name string) error {
 	if !slugRE.MatchString(name) {
-		return fmt.Errorf("invalid name %q: must be lowercase [a-z0-9-], start with alphanumeric, max 50 chars", name)
+		return fmt.Errorf("invalid name %q: must be lowercase [a-z0-9/-], start with alphanumeric, max 50 chars", name)
+	}
+	if strings.HasSuffix(name, "/") || strings.Contains(name, "//") {
+		return fmt.Errorf("invalid name %q: cannot end with or contain consecutive slashes", name)
 	}
 	return nil
 }
 
+// Composite returns the on-disk directory/sidecar basename for (repo, name).
+// Slashes in name are escaped to '+' so storage stays flat under worktreesDir;
+// the sidecar's Name field preserves the original slashes for the branch.
 func Composite(repo, name string) string {
-	return repo + sep + name
+	return repo + sep + strings.ReplaceAll(name, "/", "+")
 }
 
 // IsManagedDirName reports whether name uses the "<repo>__<name>" form fws

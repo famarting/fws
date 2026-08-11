@@ -61,9 +61,10 @@ func newDoctorCmd() *cobra.Command {
 				if !state.IsManagedDirName(e.Name()) {
 					continue
 				}
-				fmt.Printf("orphan worktree (no sidecar): %s\n", filepath.Join(cfg.WorktreesDir, e.Name()))
+				orphanPath := filepath.Join(cfg.WorktreesDir, e.Name())
+				fmt.Printf("orphan worktree (no sidecar): %s\n", orphanPath)
 				if fix {
-					fmt.Println("  -> not auto-removed (review manually with `git worktree remove`)")
+					fmt.Printf("  -> not auto-removed; run `fws adopt %s` then `fws rm` to bring it under management (or remove it manually)\n", orphanPath)
 				}
 			}
 

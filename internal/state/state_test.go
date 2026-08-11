@@ -19,6 +19,8 @@ func TestValidateName(t *testing.T) {
 		{"a", false},
 		{"123abc", false},
 		{"abc123", false},
+		{"feat/foo", false},
+		{"user/feat/foo", false},
 		{"", true},
 		{"-leading-dash", true},
 		{"Capital", true},
@@ -26,7 +28,9 @@ func TestValidateName(t *testing.T) {
 		{"with spaces", true},
 		{"../escape", true},
 		{"dot.name", true},
-		{"slash/name", true},
+		{"/leading-slash", true},
+		{"trailing-slash/", true},
+		{"double//slash", true},
 		{strings.Repeat("a", 50), false},
 		{strings.Repeat("a", 51), true},
 	}
@@ -41,10 +45,19 @@ func TestValidateName(t *testing.T) {
 }
 
 func TestComposite(t *testing.T) {
-	got := Composite("myrepo", "fix-auth")
-	want := "myrepo__fix-auth"
-	if got != want {
-		t.Errorf("Composite = %q, want %q", got, want)
+	tests := []struct {
+		repo, name, want string
+	}{
+		{"myrepo", "fix-auth", "myrepo__fix-auth"},
+		{"myrepo", "feat/foo", "myrepo__feat+foo"},
+		{"myrepo", "user/feat/foo", "myrepo__user+feat+foo"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Composite(tc.repo, tc.name); got != tc.want {
+				t.Errorf("Composite(%q, %q) = %q, want %q", tc.repo, tc.name, got, tc.want)
+			}
+		})
 	}
 }
 

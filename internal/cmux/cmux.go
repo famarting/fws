@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/famarting/fws/internal/log"
 )
 
 var (
@@ -25,6 +27,7 @@ func Available() bool {
 }
 
 func run(args ...string) (string, error) {
+	log.Cmd("cmux", args...)
 	cmd := exec.Command("cmux", args...)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out

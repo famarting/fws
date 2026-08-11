@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/famarting/fws/internal/cmux"
 	"github.com/famarting/fws/internal/config"
 	"github.com/famarting/fws/internal/git"
+	"github.com/famarting/fws/internal/log"
 	"github.com/famarting/fws/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +28,7 @@ func newNewCmd() *cobra.Command {
 		Short: "Create a new feature workspace (git worktree + cmux session)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			log.Trace = true
 			name := args[0]
 			if err := state.ValidateName(name); err != nil {
 				return err
@@ -69,7 +72,6 @@ func newNewCmd() *cobra.Command {
 				return fmt.Errorf("branch %q already exists in %s (pass --reuse-branch to use it)", name, repoPath)
 			}
 
-			fmt.Printf("fetch %s...\n", remoteFromBase(base))
 			if err := git.Fetch(repoPath, remoteFromBase(base)); err != nil {
 				return err
 			}
@@ -79,7 +81,6 @@ func newNewCmd() *cobra.Command {
 				return fmt.Errorf("resolve base %q: %w", base, err)
 			}
 
-			fmt.Printf("git worktree add %s (branch=%s base=%s)...\n", worktreePath, name, base)
 			if reuseBranch {
 				if err := git.WorktreeAddExisting(repoPath, worktreePath, name); err != nil {
 					return err
@@ -92,7 +93,6 @@ func newNewCmd() *cobra.Command {
 
 			var wsID string
 			if cmux.Available() {
-				fmt.Println("creating cmux workspace...")
 				wsID, err = cmux.NewWorkspace(worktreePath)
 				if err != nil {
 					// roll back the worktree so we don't leak it
@@ -101,10 +101,10 @@ func newNewCmd() *cobra.Command {
 				}
 				title := fmt.Sprintf("%s: %s", repoName, name)
 				if err := cmux.Rename(wsID, title); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: rename workspace: %v\n", err)
+					log.Warn("rename workspace: %v", err)
 				}
 			} else {
-				fmt.Println("cmux not available; skipping workspace (run `fws cd` inside cmux later to spawn one)")
+				log.Info("cmux not available; skipping workspace (run `fws cd` inside cmux later to spawn one)")
 			}
 
 			sc := state.Sidecar{
@@ -122,9 +122,15 @@ func newNewCmd() *cobra.Command {
 				return err
 			}
 
+			if hooks := cfg.PostCreateFor(repoName); len(hooks) > 0 {
+				if err := runPostCreate(worktreePath, hooks); err != nil {
+					log.Warn("%v", err)
+				}
+			}
+
 			if !noFocus && wsID != "" {
 				if err := cmux.Select(wsID); err != nil {
-					fmt.Fprintf(os.Stderr, "warning: focus workspace: %v\n", err)
+					log.Warn("focus workspace: %v", err)
 				}
 			}
 
@@ -145,6 +151,23 @@ func newNewCmd() *cobra.Command {
 		return nil, cobra.ShellCompDirectiveFilterDirs
 	})
 	return cmd
+}
+
+// runPostCreate executes each command via `sh -c` from worktreeDir, streaming
+// stdout/stderr. Aborts on first failure so a broken hook doesn't cascade.
+func runPostCreate(worktreeDir string, cmds []string) error {
+	log.Info("running post-create commands in %s", worktreeDir)
+	for _, c := range cmds {
+		log.Shell(c)
+		sh := exec.Command("sh", "-c", c)
+		sh.Dir = worktreeDir
+		sh.Stdout = os.Stdout
+		sh.Stderr = os.Stderr
+		if err := sh.Run(); err != nil {
+			return fmt.Errorf("post-create command %q failed: %w", c, err)
+		}
+	}
+	return nil
 }
 
 // remoteFromBase returns the remote portion of a base ref ("origin/main" -> "origin").

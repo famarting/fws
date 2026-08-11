@@ -8,9 +8,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/famarting/fws/internal/log"
 )
 
 func run(dir string, args ...string) (string, error) {
+	log.Cmd("git", args...)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	var out, errBuf bytes.Buffer
@@ -51,6 +54,33 @@ func IsWorktree(dir string) (bool, error) {
 		return false, err
 	}
 	return absCommon != absGit, nil
+}
+
+// MainRepoPath returns the main checkout's toplevel directory for a linked
+// worktree at dir (the parent of its `git-common-dir`).
+func MainRepoPath(dir string) (string, error) {
+	commonDir, err := run(dir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	absCommon, err := filepath.Abs(commonDir)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Dir(absCommon), nil
+}
+
+// CurrentBranch returns the branch checked out at dir, or an error if dir is
+// in a detached-HEAD state.
+func CurrentBranch(dir string) (string, error) {
+	out, err := run(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if out == "HEAD" {
+		return "", errors.New("in detached HEAD state, not on a branch")
+	}
+	return out, nil
 }
 
 // Fetch fetches a remote.
@@ -105,6 +135,13 @@ func WorktreeRemove(repoDir, worktreePath string, force bool) error {
 	}
 	args = append(args, worktreePath)
 	_, err := run(repoDir, args...)
+	return err
+}
+
+// WorktreePrune garbage-collects `.git/worktrees/<id>` admin entries whose
+// working trees no longer exist. Safe to run unconditionally.
+func WorktreePrune(repoDir string) error {
+	_, err := run(repoDir, "worktree", "prune")
 	return err
 }
 

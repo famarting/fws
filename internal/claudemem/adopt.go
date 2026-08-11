@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/famarting/fws/internal/log"
 )
 
 // Adopt runs `bun worker-service.cjs adopt --branch <branch> --cwd <repoPath>`.
@@ -36,7 +38,9 @@ func Adopt(repoPath, branch string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, bun, script, "adopt", "--branch", branch, "--cwd", repoPath)
+	args := []string{script, "adopt", "--branch", branch, "--cwd", repoPath}
+	log.Cmd(bun, args...)
+	cmd := exec.CommandContext(ctx, bun, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("claude-mem adopt failed: %w\n%s", err, strings.TrimSpace(string(out)))

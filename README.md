@@ -29,6 +29,36 @@ Worktrees live under `~/projects/feature-worktrees/` by default
 
 Run `fws --help` for the full command list.
 
+For state-mutating commands (`fws new`, `fws rm`), `fws` traces every
+external command it shells out to (git, cmux, claude-mem, `post_create`
+hooks) to stderr with a `+ ` prefix, so you can see what it's doing on
+your behalf. Read-only commands (`ls`, `info`, `resolve`, `cd`, `doctor`)
+stay quiet. Pass `-q` / `--quiet` to suppress.
+
+## Config
+
+`fws` reads an optional config file from `~/.fws/config.json`
+(override with `$FWS_CONFIG`).
+
+```json
+{
+  "worktrees_dir": "~/projects/feature-worktrees",
+  "repos": {
+    "myrepo": {
+      "post_create": [
+        "cd web && npm i"
+      ]
+    }
+  }
+}
+```
+
+- `worktrees_dir` — where worktrees live. `FWS_WORKTREES_DIR` wins if set.
+- `repos.<name>.post_create` — commands run after `fws new` finishes
+  setting up a workspace for that repo. The key matches the parent repo's
+  directory name. Each command runs via `sh -c` from the worktree root, so
+  `cd`, `&&`, and env vars all work. The first failure aborts the chain.
+
 ## Optional integrations
 
 - **cmux** — if installed, `fws` focuses/closes the cmux session that

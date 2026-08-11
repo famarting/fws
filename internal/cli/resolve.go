@@ -43,20 +43,13 @@ func ResolveParentRepo(cfg config.Config) (repoPath, repoName string, err error)
 }
 
 // ResolveCurrent returns the sidecar for the worktree implied by context:
-//  1. cmux workspace ID match (most reliable when in cmux)
-//  2. cwd inside a worktree path
+//  1. cwd inside a worktree path
+//  2. cmux workspace ID match
 //  3. error
 func ResolveCurrent(cfg config.Config) (*state.Sidecar, error) {
 	all, err := state.List(cfg.WorktreesDir)
 	if err != nil {
 		return nil, err
-	}
-	if id := os.Getenv("CMUX_WORKSPACE_ID"); id != "" {
-		for i := range all {
-			if all[i].CmuxWorkspaceID == id {
-				return &all[i], nil
-			}
-		}
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -69,7 +62,14 @@ func ResolveCurrent(cfg config.Config) (*state.Sidecar, error) {
 			return &all[i], nil
 		}
 	}
-	return nil, errors.New("not inside an fws-managed feature workspace (no CMUX_WORKSPACE_ID match, no cwd match)")
+	if id := os.Getenv("CMUX_WORKSPACE_ID"); id != "" {
+		for i := range all {
+			if all[i].CmuxWorkspaceID == id {
+				return &all[i], nil
+			}
+		}
+	}
+	return nil, errors.New("not inside an fws-managed feature workspace (no cwd match, no CMUX_WORKSPACE_ID match)")
 }
 
 // ResolveTarget resolves the sidecar for a [name] argument: if name is empty,
