@@ -105,3 +105,10 @@ func AliveIDs() (map[string]struct{}, error) {
 	}
 	return m, nil
 }
+
+// Send types text into a workspace's focused terminal surface. cmux interprets
+// "\n" in the text as Enter, so a trailing newline runs the command.
+func Send(workspaceID, text string) error {
+	_, err := run("send", "--workspace", workspaceID, "--", text)
+	return err
+}

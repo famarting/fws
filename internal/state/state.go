@@ -27,6 +27,13 @@ type Sidecar struct {
 
 var slugRE = regexp.MustCompile(`^[a-z0-9][a-z0-9/-]{0,49}$`)
 
+// NormalizeName lowercases a user-supplied name so that names differing only
+// in case map to the same branch, worktree directory and sidecar. Callers
+// should normalize before ValidateName.
+func NormalizeName(name string) string {
+	return strings.ToLower(name)
+}
+
 func ValidateName(name string) error {
 	if !slugRE.MatchString(name) {
 		return fmt.Errorf("invalid name %q: must be lowercase [a-z0-9/-], start with alphanumeric, max 50 chars", name)

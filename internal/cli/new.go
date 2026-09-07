@@ -24,12 +24,28 @@ func newNewCmd() *cobra.Command {
 		noFocus     bool
 	)
 	cmd := &cobra.Command{
-		Use:   "new <name>",
+		Use:   "new <name> [-- <command> [args...]]",
 		Short: "Create a new feature workspace (git worktree + cmux session)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Create a new feature workspace (git worktree + cmux session).\n\n" +
+			"Anything after `--` is run in the new cmux workspace once setup finishes:\n\n" +
+			`  fws new foobaz -- claude "do xyz"`,
+		Args: func(cmd *cobra.Command, args []string) error {
+			n := len(args)
+			if d := cmd.ArgsLenAtDash(); d >= 0 {
+				n = d
+			}
+			if n != 1 {
+				return fmt.Errorf("accepts 1 arg before `--`, received %d", n)
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			log.Trace = true
-			name := args[0]
+			name := state.NormalizeName(args[0])
+			var initCmd []string
+			if d := cmd.ArgsLenAtDash(); d >= 0 {
+				initCmd = args[d:]
+			}
 			if err := state.ValidateName(name); err != nil {
 				return err
 			}
@@ -128,6 +144,16 @@ func newNewCmd() *cobra.Command {
 				}
 			}
 
+			// Sent last so it lands after post-create hooks have finished
+			// setting the worktree up.
+			if len(initCmd) > 0 {
+				if wsID == "" {
+					log.Warn("command after `--` ignored: no cmux workspace was created")
+				} else if err := cmux.Send(wsID, shellJoin(initCmd)+"\n"); err != nil {
+					log.Warn("run %q: %v", initCmd[0], err)
+				}
+			}
+
 			if !noFocus && wsID != "" {
 				if err := cmux.Select(wsID); err != nil {
 					log.Warn("focus workspace: %v", err)
@@ -151,6 +177,26 @@ func newNewCmd() *cobra.Command {
 		return nil, cobra.ShellCompDirectiveFilterDirs
 	})
 	return cmd
+}
+
+// shellJoin renders argv as a single shell command line, single-quoting any
+// argument that isn't plainly safe so the workspace's shell sees the same words
+// this process was given.
+func shellJoin(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		parts[i] = shellQuote(a)
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(s string) string {
+	if s != "" && strings.IndexFunc(s, func(r rune) bool {
+		return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-./:=@,+", r)
+	}) < 0 {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // runPostCreate executes each command via `sh -c` from worktreeDir, streaming

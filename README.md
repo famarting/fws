@@ -24,6 +24,12 @@ fws cd add-metrics    # jump to another feature you started earlier
 fws rm fix-auth       # tear it down when you're done
 ```
 
+Anything after `--` runs in the new cmux workspace once setup finishes:
+
+```sh
+fws new fix-auth -- claude "fix the token refresh race in auth/session.go"
+```
+
 Worktrees live under `~/projects/feature-worktrees/` by default
 (override with `FWS_WORKTREES_DIR`).
 

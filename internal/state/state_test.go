@@ -9,6 +9,21 @@ import (
 	"time"
 )
 
+func TestNormalizeName(t *testing.T) {
+	for in, want := range map[string]string{
+		"Fix-Auth":    "fix-auth",
+		"FEAT/Foo":    "feat/foo",
+		"already-low": "already-low",
+	} {
+		if got := NormalizeName(in); got != want {
+			t.Errorf("NormalizeName(%q) = %q, want %q", in, got, want)
+		}
+		if err := ValidateName(NormalizeName(in)); err != nil {
+			t.Errorf("ValidateName(NormalizeName(%q)) = %v", in, err)
+		}
+	}
+}
+
 func TestValidateName(t *testing.T) {
 	tests := []struct {
 		name    string

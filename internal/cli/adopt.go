@@ -79,6 +79,7 @@ func newAdoptCmd() *cobra.Command {
 			if name == "" {
 				name = branch
 			}
+			name = state.NormalizeName(name)
 			if err := state.ValidateName(name); err != nil {
 				return err
 			}
