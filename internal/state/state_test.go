@@ -46,8 +46,8 @@ func TestValidateName(t *testing.T) {
 		{"/leading-slash", true},
 		{"trailing-slash/", true},
 		{"double//slash", true},
-		{strings.Repeat("a", 50), false},
-		{strings.Repeat("a", 51), true},
+		{strings.Repeat("a", 62), false},
+		{strings.Repeat("a", 63), true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
