@@ -73,21 +73,40 @@ func ResolveCurrent(cfg config.Config) (*state.Sidecar, error) {
 }
 
 // ResolveTarget resolves the sidecar for a [name] argument: if name is empty,
-// use ResolveCurrent; if name is given, look it up by repo+name (where repo
-// comes from cwd's parent repo).
+// use ResolveCurrent. Otherwise name may be the bare workspace name, a
+// "<repo>/<name>" qualifier, the worktree dir name ("<repo>__<name>"), or the
+// worktree path.
 func ResolveTarget(cfg config.Config, name string) (*state.Sidecar, error) {
 	if name == "" {
 		return ResolveCurrent(cfg)
 	}
-	// Try every repo prefix in the worktrees dir until we find one that matches.
 	all, err := state.List(cfg.WorktreesDir)
 	if err != nil {
 		return nil, err
+	}
+	// Exact identifiers first: a worktree path or its dir name is unambiguous.
+	abs := state.ResolvePath(name)
+	for i := range all {
+		wp := all[i].WorktreePath
+		if state.ResolvePath(wp) == abs || filepath.Base(wp) == name {
+			return &all[i], nil
+		}
 	}
 	var matches []state.Sidecar
 	for _, s := range all {
 		if s.Name == name {
 			matches = append(matches, s)
+		}
+	}
+	// No bare-name match: try "<repo>/<name>". Names may themselves contain
+	// "/", so only the first segment is treated as the repo.
+	if len(matches) == 0 {
+		if repo, rest, ok := strings.Cut(name, "/"); ok {
+			for _, s := range all {
+				if s.Repo == repo && s.Name == rest {
+					matches = append(matches, s)
+				}
+			}
 		}
 	}
 	switch len(matches) {
