@@ -84,6 +84,9 @@ func newAdoptCmd() *cobra.Command {
 				return err
 			}
 
+			if !cmd.Flags().Changed("base") {
+				base = defaultBase(repoPath)
+			}
 			if err := validateBase(base); err != nil {
 				return err
 			}
@@ -123,7 +126,7 @@ func newAdoptCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "sidecar name (default: current branch name)")
-	cmd.Flags().StringVar(&base, "base", "origin/main", "base ref to record for ahead/behind + merge checks")
+	cmd.Flags().StringVar(&base, "base", "", "base ref to record for ahead/behind + merge checks (default: origin's default branch, e.g. origin/main)")
 	cmd.Flags().BoolVar(&rmAfter, "rm", false, "immediately remove the workspace after adopting it (worktree + branch + sidecar)")
 	cmd.Flags().BoolVar(&force, "force", false, "with --rm, remove even if dirty / unpushed / unmerged")
 	_ = cmd.RegisterFlagCompletionFunc("base", completeBaseRefs)

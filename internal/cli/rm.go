@@ -3,7 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/famarting/fws/internal/claudemem"
 	"github.com/famarting/fws/internal/cmux"
@@ -119,7 +121,7 @@ func removeWorkspace(cfg config.Config, sc *state.Sidecar, force bool) error {
 	// rmdir hit ENOTEMPTY — finish the job at the filesystem level.
 	if pathExists(sc.WorktreePath) {
 		log.Info("falling back to filesystem removal of %s", sc.WorktreePath)
-		if err := os.RemoveAll(sc.WorktreePath); err != nil {
+		if err := removeAllForce(sc.WorktreePath); err != nil {
 			return fmt.Errorf("remove worktree dir: %w", err)
 		}
 	}
@@ -159,6 +161,26 @@ func removeWorkspace(cfg config.Config, sc *state.Sidecar, force bool) error {
 		}
 	}
 	return nil
+}
+
+// removeAllForce is os.RemoveAll that also copes with read-only
+// directories (e.g. envtest's bin/k8s/<ver>, installed 0555): unlinking
+// an entry needs write permission on its parent, so on EACCES it adds
+// u+w to every directory in the tree and retries.
+func removeAllForce(p string) error {
+	err := os.RemoveAll(p)
+	if err == nil || !errors.Is(err, fs.ErrPermission) {
+		return err
+	}
+	_ = filepath.WalkDir(p, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr == nil && d.IsDir() {
+			if info, err := d.Info(); err == nil {
+				_ = os.Chmod(path, info.Mode().Perm()|0o700)
+			}
+		}
+		return nil
+	})
+	return os.RemoveAll(p)
 }
 
 func pathExists(p string) bool {

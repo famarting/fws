@@ -49,9 +49,6 @@ func newNewCmd() *cobra.Command {
 			if err := state.ValidateName(name); err != nil {
 				return err
 			}
-			if err := validateBase(base); err != nil {
-				return err
-			}
 			cfg, err := config.Load()
 			if err != nil {
 				return err
@@ -71,6 +68,13 @@ func newNewCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+			}
+
+			if !cmd.Flags().Changed("base") {
+				base = defaultBase(repoPath)
+			}
+			if err := validateBase(base); err != nil {
+				return err
 			}
 
 			worktreePath := state.WorktreePath(cfg.WorktreesDir, repoName, name)
@@ -168,7 +172,7 @@ func newNewCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&base, "base", "origin/main", "base ref to branch from")
+	cmd.Flags().StringVar(&base, "base", "", "base ref to branch from (default: origin's default branch, e.g. origin/main)")
 	cmd.Flags().StringVar(&repoFlag, "repo", "", "explicit parent repo path (default: detect from cwd)")
 	cmd.Flags().BoolVar(&reuseBranch, "reuse-branch", false, "use existing branch instead of creating new one")
 	cmd.Flags().BoolVar(&noFocus, "no-focus", false, "don't select the new cmux workspace")
@@ -214,6 +218,21 @@ func runPostCreate(worktreeDir string, cmds []string) error {
 		}
 	}
 	return nil
+}
+
+// defaultBase returns the base ref to use when --base isn't given: whatever
+// origin/HEAD points at, else origin/main or origin/master if present, else
+// origin/main. Only local refs are consulted; the caller fetches afterwards.
+func defaultBase(repoPath string) string {
+	if ref, err := git.RemoteHead(repoPath, "origin"); err == nil && ref != "" {
+		return ref
+	}
+	for _, b := range []string{"main", "master"} {
+		if git.RemoteBranchExists(repoPath, "origin", b) {
+			return "origin/" + b
+		}
+	}
+	return "origin/main"
 }
 
 // remoteFromBase returns the remote portion of a base ref ("origin/main" -> "origin").

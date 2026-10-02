@@ -94,6 +94,20 @@ func RevParse(dir, ref string) (string, error) {
 	return run(dir, "rev-parse", ref)
 }
 
+// RemoteHead returns the default branch a remote's HEAD points at, as a
+// short ref (e.g. "origin/master"). Errors if refs/remotes/<remote>/HEAD is
+// not set, which happens for remotes added after clone.
+func RemoteHead(dir, remote string) (string, error) {
+	return run(dir, "symbolic-ref", "--short", "refs/remotes/"+remote+"/HEAD")
+}
+
+// RemoteBranchExists returns true if <remote>/<branch> exists as a
+// remote-tracking ref.
+func RemoteBranchExists(dir, remote, branch string) bool {
+	_, err := run(dir, "show-ref", "--verify", "--quiet", "refs/remotes/"+remote+"/"+branch)
+	return err == nil
+}
+
 // BranchExists returns true if the branch exists locally.
 func BranchExists(dir, branch string) bool {
 	_, err := run(dir, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
