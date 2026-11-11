@@ -6,7 +6,13 @@ import (
 	"strings"
 
 	"github.com/famarting/fws/internal/cmux"
+	"github.com/famarting/fws/internal/state"
 )
+
+// workspaceTitle is the cmux title fws gives a feature workspace.
+func workspaceTitle(sc *state.Sidecar) string {
+	return fmt.Sprintf("%s: %s", sc.Repo, sc.Name)
+}
 
 // shortenHome replaces a leading $HOME in p with "~" for display.
 func shortenHome(p string) string {

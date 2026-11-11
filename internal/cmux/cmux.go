@@ -2,11 +2,15 @@ package cmux
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/famarting/fws/internal/log"
 )
@@ -29,6 +33,9 @@ func Available() bool {
 func run(args ...string) (string, error) {
 	log.Cmd("cmux", args...)
 	cmd := exec.Command("cmux", args...)
+	// Silence the legacy-verb deprecation notice so it doesn't pollute
+	// the error messages we build from stderr.
+	cmd.Env = append(os.Environ(), "CMUX_QUIET=1")
 	var out, errBuf bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errBuf
@@ -58,19 +65,40 @@ func NewWorkspace(cwd string) (string, error) {
 	if ref == "" {
 		return "", fmt.Errorf("could not parse workspace ref from cmux output: %q", out)
 	}
-	listOut, err := run("--id-format", "both", "list-workspaces")
-	if err != nil {
-		return "", fmt.Errorf("list-workspaces after create: %w", err)
-	}
-	for _, line := range strings.Split(listOut, "\n") {
-		if extractRef(line) != ref {
+	// A busy cmux can reply with the ref before list-workspaces shows it,
+	// so poll for a few seconds before giving up.
+	var lastErr error
+	for _, wait := range []time.Duration{0, 100, 250, 500, 1000, 2000} {
+		time.Sleep(wait * time.Millisecond)
+		listOut, err := run("--id-format", "both", "list-workspaces")
+		if err != nil {
+			lastErr = err
 			continue
 		}
-		if id := extractUUID(line); id != "" {
+		lastErr = nil
+		if id := uuidForRef(listOut, ref); id != "" {
 			return id, nil
 		}
 	}
+	// The caller only learns a UUID, so close the workspace by ref here or
+	// it outlives the failed create.
+	if _, err := run("close-workspace", "--workspace", ref); err != nil {
+		log.Warn("close unresolved workspace %s: %v", ref, err)
+	}
+	if lastErr != nil {
+		return "", fmt.Errorf("list-workspaces after create: %w", lastErr)
+	}
 	return "", fmt.Errorf("created workspace %s but couldn't find its UUID in list output", ref)
+}
+
+// uuidForRef returns the UUID on the list-workspaces line for ref, or "".
+func uuidForRef(listOut, ref string) string {
+	for _, line := range strings.Split(listOut, "\n") {
+		if extractRef(line) == ref {
+			return extractUUID(line)
+		}
+	}
+	return ""
 }
 
 // Rename sets a workspace's title.
@@ -85,9 +113,10 @@ func Select(workspaceID string) error {
 	return err
 }
 
-// Close closes a workspace.
+// Close closes a workspace. --force skips cmux's confirmation when a process
+// is running in it, which is always the case when fws runs from inside it.
 func Close(workspaceID string) error {
-	_, err := run("close-workspace", "--workspace", workspaceID)
+	_, err := run("close-workspace", "--workspace", workspaceID, "--force")
 	return err
 }
 
@@ -104,6 +133,70 @@ func AliveIDs() (map[string]struct{}, error) {
 		}
 	}
 	return m, nil
+}
+
+// Workspace is a live cmux workspace as reported by `cmux --json workspace list`.
+type Workspace struct {
+	ID          string  `json:"id"`
+	CustomTitle *string `json:"custom_title"`
+	Dir         string  `json:"current_directory"`
+}
+
+// List returns the live workspaces.
+func List() ([]Workspace, error) {
+	out, err := run("--json", "workspace", "list")
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Workspaces []Workspace `json:"workspaces"`
+	}
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		return nil, fmt.Errorf("parse cmux workspace list: %w", err)
+	}
+	return resp.Workspaces, nil
+}
+
+// Locate returns the live workspace ID for a feature workspace. cmux assigns
+// new UUIDs when the app restarts, so a recorded id goes stale; when it is no
+// longer live, fall back to the title fws set on creation, then (only when an
+// id was recorded) to a workspace whose cwd is inside dir. Returns "" if
+// nothing matches.
+func Locate(id, title, dir string) (string, error) {
+	wss, err := List()
+	if err != nil {
+		return "", err
+	}
+	return locate(wss, id, title, dir), nil
+}
+
+func locate(wss []Workspace, id, title, dir string) string {
+	for _, w := range wss {
+		if id != "" && strings.EqualFold(w.ID, id) {
+			return w.ID
+		}
+	}
+	for _, w := range wss {
+		if title != "" && w.CustomTitle != nil && *w.CustomTitle == title {
+			return w.ID
+		}
+	}
+	// The cwd fallback only recovers a workspace fws once created (id != "").
+	// Without a recorded id, a cwd match is just some shell that happens to
+	// sit in the worktree, e.g. the one `fws adopt` was run from.
+	if id != "" && dir != "" {
+		dir = filepath.Clean(dir)
+		for _, w := range wss {
+			if w.Dir == "" {
+				continue
+			}
+			d := filepath.Clean(w.Dir)
+			if d == dir || strings.HasPrefix(d, dir+string(filepath.Separator)) {
+				return w.ID
+			}
+		}
+	}
+	return ""
 }
 
 // Send types text into a workspace's focused terminal surface. cmux interprets

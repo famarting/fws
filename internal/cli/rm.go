@@ -155,9 +155,14 @@ func removeWorkspace(cfg config.Config, sc *state.Sidecar, force bool) error {
 	log.Info("removed sidecar for %s/%s", sc.Repo, sc.Name)
 
 	// Close cmux workspace last. If we're inside it, this terminates our shell.
-	if sc.CmuxWorkspaceID != "" && cmux.Available() {
-		if err := cmux.Close(sc.CmuxWorkspaceID); err != nil {
-			log.Warn("close cmux workspace: %v", err)
+	if cmux.Available() {
+		id, err := cmux.Locate(sc.CmuxWorkspaceID, workspaceTitle(sc), sc.WorktreePath)
+		if err != nil {
+			log.Warn("find cmux workspace: %v", err)
+		} else if id != "" {
+			if err := cmux.Close(id); err != nil {
+				log.Warn("close cmux workspace: %v", err)
+			}
 		}
 	}
 	return nil

@@ -101,22 +101,49 @@ func newNewCmd() *cobra.Command {
 				return fmt.Errorf("resolve base %q: %w", base, err)
 			}
 
+			// rollback undoes whatever this command has created so far, so a
+			// failed create leaves no worktree, branch, or cmux workspace
+			// behind. A reused branch predates us and is never deleted.
+			var wsID string
+			rollback := func() {
+				if wsID != "" {
+					if err := cmux.Close(wsID); err != nil {
+						log.Warn("rollback: close cmux workspace: %v", err)
+					}
+				}
+				if pathExists(worktreePath) {
+					if err := git.WorktreeRemove(repoPath, worktreePath, true); err != nil {
+						log.Warn("rollback: git worktree remove: %v", err)
+					}
+				}
+				if err := git.WorktreePrune(repoPath); err != nil {
+					log.Warn("rollback: git worktree prune: %v", err)
+				}
+				if !reuseBranch && git.BranchExists(repoPath, name) {
+					if err := git.BranchDelete(repoPath, name, true); err != nil {
+						log.Warn("rollback: delete branch %s: %v", name, err)
+					}
+				}
+			}
+
 			if reuseBranch {
 				if err := git.WorktreeAddExisting(repoPath, worktreePath, name); err != nil {
+					rollback()
 					return err
 				}
 			} else {
+				// `worktree add -b` creates the branch before checking it
+				// out, so a failed checkout can still leave the branch.
 				if err := git.WorktreeAdd(repoPath, worktreePath, name, base); err != nil {
+					rollback()
 					return err
 				}
 			}
 
-			var wsID string
 			if cmux.Available() {
 				wsID, err = cmux.NewWorkspace(worktreePath)
 				if err != nil {
-					// roll back the worktree so we don't leak it
-					_ = git.WorktreeRemove(repoPath, worktreePath, true)
+					rollback()
 					return fmt.Errorf("create cmux workspace: %w", err)
 				}
 				title := fmt.Sprintf("%s: %s", repoName, name)
@@ -139,6 +166,7 @@ func newNewCmd() *cobra.Command {
 				CreatedAt:       time.Now().UTC(),
 			}
 			if err := state.Write(cfg.WorktreesDir, sc); err != nil {
+				rollback()
 				return err
 			}
 

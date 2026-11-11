@@ -27,12 +27,20 @@ func newCdCmd() *cobra.Command {
 			if !cmux.Available() {
 				return fmt.Errorf("cmux is not installed; `fws cd` requires cmux. worktree path: %s", sc.WorktreePath)
 			}
-			alive, err := cmux.AliveIDs()
+			title := workspaceTitle(sc)
+			live, err := cmux.Locate(sc.CmuxWorkspaceID, title, sc.WorktreePath)
 			if err != nil {
 				return fmt.Errorf("cmux list: %w", err)
 			}
-			if _, ok := alive[sc.CmuxWorkspaceID]; ok {
-				return cmux.Select(sc.CmuxWorkspaceID)
+			if live != "" {
+				if live != sc.CmuxWorkspaceID {
+					// cmux re-keyed it (e.g. after an app restart): record the new id.
+					sc.CmuxWorkspaceID = live
+					if err := state.Write(cfg.WorktreesDir, *sc); err != nil {
+						return err
+					}
+				}
+				return cmux.Select(live)
 			}
 			// No live workspace: spawn one and patch the sidecar.
 			if sc.CmuxWorkspaceID == "" {
@@ -44,7 +52,6 @@ func newCdCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			title := fmt.Sprintf("%s: %s", sc.Repo, sc.Name)
 			if err := cmux.Rename(id, title); err != nil {
 				fmt.Printf("warning: rename: %v\n", err)
 			}
